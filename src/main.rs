@@ -6,7 +6,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::thread;
 
 #[derive(Parser)]
 #[command(
@@ -35,8 +34,8 @@ struct ConfigDiff<'a> {
 fn main() -> Result<()> {
     let input = Args::parse();
 
-    // 读取 YAML 内容
-    let (old_val, new_val) = read_cfg_file(input.old, input.new)?;
+    let old_val = read_cfg(input.old)?;
+    let new_val = read_cfg(input.new)?;
 
     // 比较 YAML 内容
     let diff = cmp_yml_vals(&old_val, &new_val);
@@ -47,33 +46,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn read_cfg_file(old_path: PathBuf, new_path: PathBuf) -> Result<(Value, Value)> {
-    let old_handle = thread::spawn(|| {
-        File::open(old_path)
-            .map(|old_file| BufReader::new(old_file))
-            .map_err(|_| anyhow!("读取旧版配置文件失败！"))
-            .and_then(|old_reader| {
-                serde_yaml::from_reader(old_reader).map_err(|_| anyhow!("解析旧版配置文件失败！"))
-            })
-    });
-
-    let new_handle = thread::spawn(|| {
-        File::open(new_path)
-            .map(|new_file| BufReader::new(new_file))
-            .map_err(|_| anyhow!("读取新版配置文件失败！"))
-            .and_then(|new_reader| {
-                serde_yaml::from_reader(new_reader).map_err(|_| anyhow!("解析新版配置文件失败！"))
-            })
-    });
-
-    let old_val = old_handle
-        .join()
-        .map_err(|_| anyhow!("读取旧配置文件的线程发生错误"))??;
-    let new_val = new_handle
-        .join()
-        .map_err(|_| anyhow!("读取新配置文件的线程发生错误"))??;
-
-    Ok((old_val, new_val))
+fn read_cfg(path: PathBuf) -> Result<Value> {
+    File::open(&path)
+        .map(|old_file| BufReader::new(old_file))
+        .map_err(|e| anyhow!("读取配置文件失败！{e}: {:?}", path))
+        .and_then(|old_reader| {
+            serde_yaml::from_reader(old_reader).map_err(|e| anyhow!("解析旧版配置文件失败！{e}"))
+        })
 }
 
 fn cmp_yml_vals<'a>(old: &'a Value, new: &'a Value) -> ConfigDiff<'a> {
@@ -228,7 +207,7 @@ fn print_diff(diff: &ConfigDiff) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{cmp_yml_vals, print_diff, read_cfg_file};
+    use crate::{cmp_yml_vals, print_diff, read_cfg};
     use std::path::PathBuf;
     use std::str::FromStr;
 
@@ -241,10 +220,11 @@ mod tests {
             PathBuf::from_str("/Users/dapengchengsmac/RustroverProjects/yml-diff/config_v2.yml")
                 .unwrap();
 
-        let (old_content, new_content) = read_cfg_file(old, new).expect("读取失败");
+        let old_val = read_cfg(old).unwrap();
+        let new_val = read_cfg(new).unwrap();
 
         // 比较配置
-        let diff = cmp_yml_vals(&old_content, &new_content);
+        let diff = cmp_yml_vals(&old_val, &new_val);
 
         // 输出结果
         print_diff(&diff);
