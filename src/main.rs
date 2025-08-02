@@ -1,9 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use colored::*;
 use serde_yaml::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs;
+use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::thread;
 
@@ -13,7 +14,7 @@ use std::thread;
     author = "nobody <1085529137@qq.com>",
     version,
     about = "A tiny YAML configuration file diff tool",
-    long_about = "Compare two YAML configuration files and display differences in a clear, colored format. Perfect for tracking configuration changes across versions."
+    long_about = "Compare two YAML configuration files and display differences in a clear, colored format. Perfect for tracking config changes across versions."
 )]
 struct Args {
     /// 旧版本的 YAML 配置文件路径
@@ -34,15 +35,11 @@ struct ConfigDiff<'a> {
 fn main() -> Result<()> {
     let input = Args::parse();
 
-    let (old_content, new_content) = read_config_content(&input.old, &input.new)?;
+    // 读取 YAML 内容
+    let (old_val, new_val) = read_cfg_file(input.old, input.new)?;
 
-    // 解析 YAML 内容
-    let old_yaml: Value = serde_yaml::from_str(&old_content).context("解析旧配置文件失败")?;
-
-    let new_yaml: Value = serde_yaml::from_str(&new_content).context("解析新配置文件失败")?;
-
-    // 比较配置
-    let diff = compare_yaml_vals(&old_yaml, &new_yaml);
+    // 比较 YAML 内容
+    let diff = cmp_yml_vals(&old_val, &new_val);
 
     // 输出结果
     print_diff(&diff);
@@ -50,69 +47,78 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn read_config_content(old: &PathBuf, new: &PathBuf) -> Result<(String, String)> {
-    thread::scope(|s| {
-        let old_handle = s.spawn(|| -> Result<String> {
-            fs::read_to_string(old).with_context(|| format!("无法读取旧配置文件: {:?}", old))
-        });
+fn read_cfg_file(old_path: PathBuf, new_path: PathBuf) -> Result<(Value, Value)> {
+    let old_handle = thread::spawn(|| {
+        File::open(old_path)
+            .map(|old_file| BufReader::new(old_file))
+            .map_err(|_| anyhow!("读取旧版配置文件失败！"))
+            .and_then(|old_reader| {
+                serde_yaml::from_reader(old_reader).map_err(|_| anyhow!("解析旧版配置文件失败！"))
+            })
+    });
 
-        let new_handle = s.spawn(|| -> Result<String> {
-            fs::read_to_string(new).with_context(|| format!("无法读取新配置文件: {:?}", new))
-        });
+    let new_handle = thread::spawn(|| {
+        File::open(new_path)
+            .map(|new_file| BufReader::new(new_file))
+            .map_err(|_| anyhow!("读取新版配置文件失败！"))
+            .and_then(|new_reader| {
+                serde_yaml::from_reader(new_reader).map_err(|_| anyhow!("解析新版配置文件失败！"))
+            })
+    });
 
-        // 等待两个线程完成并获取结果
-        let old_content = old_handle
-            .join()
-            .map_err(|_| anyhow::anyhow!("读取旧配置文件的线程发生错误"))??;
-        let new_content = new_handle
-            .join()
-            .map_err(|_| anyhow::anyhow!("读取新配置文件的线程发生错误"))??;
+    let old_val = old_handle
+        .join()
+        .map_err(|_| anyhow!("读取旧配置文件的线程发生错误"))??;
+    let new_val = new_handle
+        .join()
+        .map_err(|_| anyhow!("读取新配置文件的线程发生错误"))??;
 
-        Ok::<(String, String), anyhow::Error>((old_content, new_content))
-    })
+    Ok::<(Value, Value), anyhow::Error>((old_val, new_val))
 }
 
-fn compare_yaml_vals<'a>(old: &'a Value, new: &'a Value) -> ConfigDiff<'a> {
-    let old_key_vals = extract_all_keys(&old, String::new());
-    let new_key_vals = extract_all_keys(&new, String::new());
+fn cmp_yml_vals<'a>(old: &'a Value, new: &'a Value) -> ConfigDiff<'a> {
+    let old_key_vals = extract_key_vals(&old, String::new());
+    let new_key_vals = extract_key_vals(&new, String::new());
 
-    let old_keys: HashSet<_> = old_key_vals.keys().map(|s| s.as_str()).collect();
-    let new_keys: HashSet<_> = new_key_vals.keys().map(|s| s.as_str()).collect();
+    let old_keys: HashSet<_> = old_key_vals.keys().collect();
+    let new_keys: HashSet<_> = new_key_vals.keys().collect();
 
-    let added: Vec<&str> = new_keys.difference(&old_keys).copied().collect();
+    let added_keys: Vec<&str> = new_keys
+        .difference(&old_keys)
+        .map(|&k| k.as_str())
+        .collect();
 
-    let added_key_vals = added
+    let added = added_keys
         .into_iter()
         .filter_map(|k| new_key_vals.get(k).map(|&v| (k.into(), v)))
         .collect();
 
-    let removed: Vec<&str> = old_keys.difference(&new_keys).copied().collect();
+    let removed_keys: Vec<&str> = old_keys
+        .difference(&new_keys)
+        .map(|&k| k.as_str())
+        .collect();
 
-    let removed_key_vals = removed
+    let removed = removed_keys
         .into_iter()
         .filter_map(|k| old_key_vals.get(k).map(|&v| (k.into(), v)))
         .collect();
 
-    let modified_key_vals = old_keys
+    let modified = old_keys
         .intersection(&new_keys)
-        .into_iter()
-        .filter_map(|&k| {
-            old_key_vals
-                .get(k)
-                .map(|&v| (k, v))
-                .and_then(|(k, old)| new_key_vals.get(k).map(|&new| (k.into(), (old, new))))
-                .filter(|(_, (old, new))| old != new)
+        .filter_map(|&k| match (old_key_vals.get(k), new_key_vals.get(k)) {
+            (Some(&old), Some(&new)) if old != new => Some((k.into(), (old, new))),
+            _ => None,
         })
         .collect();
 
     ConfigDiff {
-        added: added_key_vals,
-        removed: removed_key_vals,
-        modified: modified_key_vals,
+        added,
+        removed,
+        modified,
     }
 }
 
-fn extract_all_keys(value: &Value, mut prefix: String) -> HashMap<String, &Value> {
+fn extract_key_vals(value: &Value, mut prefix: String) -> HashMap<String, &Value> {
     let mut key_vals = HashMap::new();
 
     match value {
@@ -128,7 +134,7 @@ fn extract_all_keys(value: &Value, mut prefix: String) -> HashMap<String, &Value
 
                     // 递归处理嵌套对象
                     if let Value::Mapping(_) = v {
-                        let nested_keys = extract_all_keys(v, prefix.clone());
+                        let nested_keys = extract_key_vals(v, prefix.clone());
                         key_vals.extend(nested_keys);
                     } else {
                         // 添加当前键值对
@@ -187,7 +193,6 @@ fn print_diff(diff: &ConfigDiff) {
     println!("  新增: {}", diff.added.len().to_string().green());
     println!("  删除: {}", diff.removed.len().to_string().red());
     println!("  修改: {}", diff.modified.len().to_string().yellow());
-
     println!();
 
     if !diff.added.is_empty() {
@@ -223,8 +228,7 @@ fn print_diff(diff: &ConfigDiff) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{compare_yaml_vals, print_diff, read_config_content};
-    use serde_yaml::Value;
+    use crate::{cmp_yml_vals, print_diff, read_cfg_file};
     use std::path::PathBuf;
     use std::str::FromStr;
 
@@ -237,15 +241,10 @@ mod tests {
             PathBuf::from_str("/Users/dapengchengsmac/RustroverProjects/yml-diff/config_v2.yml")
                 .unwrap();
 
-        let (old_content, new_content) = read_config_content(&old, &new).expect("读取失败");
-
-        // 解析 YAML 内容
-        let old_yaml: Value = serde_yaml::from_str(&old_content).expect("解析旧配置文件失败");
-
-        let new_yaml: Value = serde_yaml::from_str(&new_content).expect("解析新配置文件失败");
+        let (old_content, new_content) = read_cfg_file(old, new).expect("读取失败");
 
         // 比较配置
-        let diff = compare_yaml_vals(&old_yaml, &new_yaml);
+        let diff = cmp_yml_vals(&old_content, &new_content);
 
         // 输出结果
         print_diff(&diff);
