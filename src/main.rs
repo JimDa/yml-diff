@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow};
 use clap::Parser;
 use colored::*;
 use serde_yaml::Value;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
@@ -48,10 +49,10 @@ fn main() -> Result<()> {
 
 fn read_cfg(path: PathBuf) -> Result<Value> {
     File::open(&path)
-        .map(|old_file| BufReader::new(old_file))
+        .map(|file| BufReader::new(file))
         .map_err(|e| anyhow!("读取配置文件失败！{e}: {:?}", path))
-        .and_then(|old_reader| {
-            serde_yaml::from_reader(old_reader).map_err(|e| anyhow!("解析旧版配置文件失败！{e}"))
+        .and_then(|reader| {
+            serde_yaml::from_reader(reader).map_err(|e| anyhow!("解析旧版配置文件失败！{e}"))
         })
 }
 
@@ -136,30 +137,34 @@ fn extract_key_vals(value: &Value, mut prefix: String) -> HashMap<String, &Value
     key_vals
 }
 
-fn get_val_string(val: &Value) -> String {
+fn get_val_string(val: &Value) -> Cow<str> {
     match val {
-        Value::Null => String::from("null"),
-        Value::Bool(b) => b.to_string(),
-        Value::Number(n) => n.to_string(),
-        Value::String(s) => s.clone(),
+        Value::Null => Cow::Borrowed("null"),
+        Value::Bool(b) => {
+            if *b {
+                Cow::Borrowed("true")
+            } else {
+                Cow::Borrowed("false")
+            }
+        }
+        Value::Number(n) => Cow::Owned(n.to_string()),
+        Value::String(s) => Cow::Owned(s.clone()),
         Value::Sequence(seq) => {
             let mut prefix = String::from("[");
             let arr: Vec<_> = seq.iter().map(|v| get_val_string(&v)).collect();
             let arr_str = arr.join(", ");
             prefix.push_str(&arr_str);
             prefix.push_str("]");
-            prefix
+            Cow::Owned(prefix)
         }
         Value::Mapping(m) => {
-            let map: HashMap<String, String> = m
+            let map: HashMap<Cow<str>, Cow<str>> = m
                 .iter()
                 .map(|(k, v)| (get_val_string(k), get_val_string(v)))
                 .collect();
-            format!("{:?}", map)
+            Cow::Owned(format!("{:?}", map))
         }
-        Value::Tagged(t) => {
-            format!("{}:{}", t.tag, get_val_string(&t.value))
-        }
+        Value::Tagged(t) => Cow::Owned(format!("{}:{}", t.tag, get_val_string(&t.value))),
     }
 }
 
