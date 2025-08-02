@@ -49,7 +49,7 @@ fn main() -> Result<()> {
 
 fn read_cfg(path: PathBuf) -> Result<Value> {
     File::open(&path)
-        .map(|file| BufReader::new(file))
+        .map(BufReader::new)
         .map_err(|e| anyhow!("读取配置文件失败！{e}: {:?}", path))
         .and_then(|reader| {
             serde_yaml::from_reader(reader).map_err(|e| anyhow!("解析旧版配置文件失败！{e}"))
@@ -57,8 +57,8 @@ fn read_cfg(path: PathBuf) -> Result<Value> {
 }
 
 fn cmp_yml_vals<'a>(old: &'a Value, new: &'a Value) -> ConfigDiff<'a> {
-    let old_key_vals = extract_key_vals(&old, String::new());
-    let new_key_vals = extract_key_vals(&new, String::new());
+    let old_key_vals = extract_key_vals(old, String::new());
+    let new_key_vals = extract_key_vals(new, String::new());
 
     let old_keys: HashSet<_> = old_key_vals.keys().collect();
     let new_keys: HashSet<_> = new_key_vals.keys().collect();
@@ -129,7 +129,7 @@ fn extract_key_vals(value: &Value, mut prefix: String) -> HashMap<String, &Value
         _ => {
             // 如果不是映射类型，直接添加
             if !prefix.is_empty() {
-                key_vals.insert(prefix, &value);
+                key_vals.insert(prefix, value);
             }
         }
     }
@@ -151,10 +151,10 @@ fn get_val_string(val: &Value) -> Cow<str> {
         Value::String(s) => Cow::Owned(s.clone()),
         Value::Sequence(seq) => {
             let mut prefix = String::from("[");
-            let arr: Vec<_> = seq.iter().map(|v| get_val_string(&v)).collect();
+            let arr: Vec<_> = seq.iter().map(|v| get_val_string(v)).collect();
             let arr_str = arr.join(", ");
             prefix.push_str(&arr_str);
-            prefix.push_str("]");
+            prefix.push(']');
             Cow::Owned(prefix)
         }
         Value::Mapping(m) => {
@@ -162,7 +162,7 @@ fn get_val_string(val: &Value) -> Cow<str> {
                 .iter()
                 .map(|(k, v)| (get_val_string(k), get_val_string(v)))
                 .collect();
-            Cow::Owned(format!("{:?}", map))
+            Cow::Owned(format!("{map:?}"))
         }
         Value::Tagged(t) => Cow::Owned(format!("{}:{}", t.tag, get_val_string(&t.value))),
     }
