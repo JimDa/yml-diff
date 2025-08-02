@@ -77,7 +77,8 @@ impl ConfigKey {
         let other_parts: Vec<&str> = other.0.split('.').collect();
 
         // 找到公共前缀的长度
-        let common_prefix_len = self_parts.iter()
+        let common_prefix_len = self_parts
+            .iter()
             .zip(other_parts.iter())
             .take_while(|(a, b)| a == b)
             .count();
