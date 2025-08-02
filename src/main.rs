@@ -73,7 +73,7 @@ fn read_cfg_file(old_path: PathBuf, new_path: PathBuf) -> Result<(Value, Value)>
         .join()
         .map_err(|_| anyhow!("读取新配置文件的线程发生错误"))??;
 
-    Ok::<(Value, Value), anyhow::Error>((old_val, new_val))
+    Ok((old_val, new_val))
 }
 
 fn cmp_yml_vals<'a>(old: &'a Value, new: &'a Value) -> ConfigDiff<'a> {
