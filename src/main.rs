@@ -214,16 +214,35 @@ fn print_diff(diff: &ConfigDiff) {
 mod tests {
     use crate::{cmp_yml_vals, print_diff, read_cfg};
     use std::path::PathBuf;
-    use std::str::FromStr;
 
     #[test]
     fn test_compare_yaml() {
-        let old =
-            PathBuf::from_str("/Users/dapengchengsmac/RustroverProjects/yml-diff/config_v1.yml")
-                .unwrap();
-        let new =
-            PathBuf::from_str("/Users/dapengchengsmac/RustroverProjects/yml-diff/config_v2.yml")
-                .unwrap();
+        // 获取项目根目录（Cargo.toml 所在的目录）
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
+        // 构建配置文件的完整路径
+        let old = PathBuf::from(manifest_dir).join("config_v1.yml");
+        let new = PathBuf::from(manifest_dir).join("config_v2.yml");
+
+        println!("Looking for files:");
+        println!("Old config: {old:?}");
+        println!("New config: {new:?}");
+
+        // 检查文件是否存在
+        if !old.exists() {
+            panic!(
+                "config_v1.yml not found at {:?}. Current working directory: {:?}",
+                old,
+                std::env::current_dir().unwrap()
+            );
+        }
+        if !new.exists() {
+            panic!(
+                "config_v2.yml not found at {:?}. Current working directory: {:?}",
+                new,
+                std::env::current_dir().unwrap()
+            );
+        }
 
         let old_val = read_cfg(old).unwrap();
         let new_val = read_cfg(new).unwrap();
