@@ -11,10 +11,10 @@ use std::thread;
 #[derive(Parser)]
 #[command(
     name = "yml-diff",
-    author = "nobody <1085529137@qq.com>",
-    version,
-    about = "A tiny YAML configuration file diff tool",
-    long_about = "Compare two YAML configuration files and display differences in a clear, colored format. Perfect for tracking config changes across versions."
+    version = "0.1.0",
+    about = "A tiny YAML config file diff tool",
+    long_about = "Compare two YAML config files and display differences in a clear, colored format. Perfect for tracking config changes across versions.",
+    after_help = "Author: nobody <1085529137@qq.com>"
 )]
 struct Args {
     /// 旧版本的 YAML 配置文件路径
