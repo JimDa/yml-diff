@@ -192,7 +192,7 @@ fn print_diff(diff: &ConfigDiff) {
 
     if !diff.added.is_empty() {
         println!("{}", "新增的配置项:".green().bold());
-        for (key, val) in &diff.added {
+        for (key, &val) in &diff.added {
             println!("  + {}: {}", key.green(), get_val_string(val).green());
         }
         println!();
