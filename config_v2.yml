@@ -1,0 +1,62 @@
+# 基础配置 (修改项)
+app:
+  name: "ModernApp"  # 编辑：字符串修改
+  version: 2.0  # 编辑：浮点数修改
+  production: true  # 编辑：布尔值修改
+  pi_value: 3.14159  # 编辑：浮点数精度增加
+  # 删除项：max_connections
+  # 新增项↓
+  min_instances: 3  # 新增：整数
+  backup_ports: [5000, 5001]  # 新增：整数数组
+  environment: &prod "production"  # 新增：锚点
+
+# 服务配置 (结构调整)
+services:
+  # 数据库修改组
+  database:
+    host: "new.db.cloud"  # 编辑：字符串
+    port: 5432  # 编辑：整数
+    credentials:
+      username: "admin"
+      password: "new_secure!pass"  # 编辑：字符串
+      # 新增项↓
+      role: "superuser"  # 新增：字符串
+      ttl: 3600  # 新增：整数
+    # 删除项：ssl_enabled
+    # 新增项↓
+    replicas:  # 新增：嵌套列表
+      - "replica1.cloud"
+      - "replica2.cloud"
+
+  # 缓存重构
+  cache:
+    - "redis://cluster"  # 替换原有元素
+    - "memcached://backup"  # 新增元素
+  timeout_ms: 1500  # 编辑：整数
+    # 新增项↓
+  compression: true  # 新增：布尔值
+
+# 功能开关 (新增模块)
+features:
+  login: true
+  # 删除项：signup
+  # 新增项↓
+  oauth2:  # 新增：嵌套映射
+    google: true
+    github: false
+  experimental:
+    - "blockchain"  # 替换原有元素
+    - "vr_module"  # 替换原有元素
+    - "quantum"  # 新增元素
+
+# 特殊类型扩展
+formats:
+  date: !!timestamp 2025-12-31T23:59:59Z  # 编辑：时间戳类型
+  # 删除项：currency
+  thresholds: [0.3, 0.7, 1.5]  # 编辑：数组值修改
+  # 新增项↓
+  multi_type:  # 新增：混合类型
+    - 42
+    - "text"
+    - enabled: false
+  env_ref: *prod  # 新增：锚点引用

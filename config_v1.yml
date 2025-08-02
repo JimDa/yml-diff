@@ -1,0 +1,40 @@
+# 基础配置
+app:
+  name: "LegacyApp"
+  version: 1.0
+  production: false
+  max_connections: 100
+  pi_value: 3.14
+  metadata: null  # 空值
+
+# 服务配置
+services:
+  database:
+    host: "db.example.com"
+    port: 3306
+    credentials:
+      username: "admin"
+      password: "old_password"  # 将被修改
+    ssl_enabled: true
+    connection_timeout: 30.5  # 浮点数
+
+  cache:
+    - "redis://primary"
+    - "redis://secondary"  # 将被删除
+  timeout_ms: 2000  # 整数
+
+# 功能开关
+features:
+  login: true
+  signup: false  # 布尔值
+  experimental:
+    - "ai_module"
+    - "voice_recognition"  # 将被替换
+
+# 特殊类型
+formats:
+  date: !!str 2025-08-02  # 强制类型转换
+  currency:
+    usd: $1.00
+    eur: €0.92
+  thresholds: [0.5, 1.0, 2.5]  # 浮点数组
