@@ -45,13 +45,13 @@ impl From<String> for ConfigKey {
 
 impl From<&String> for ConfigKey {
     fn from(s: &String) -> Self {
-        ConfigKey::from(s.clone())
+        ConfigKey(s.clone())
     }
 }
 
 impl From<&str> for ConfigKey {
     fn from(s: &str) -> Self {
-        ConfigKey(s.to_string())
+        ConfigKey(s.into())
     }
 }
 
@@ -76,39 +76,28 @@ impl ConfigKey {
         let self_parts: Vec<&str> = self.0.split('.').collect();
         let other_parts: Vec<&str> = other.0.split('.').collect();
 
-        // 找到公共前缀的长度
-        let common_prefix_len = self_parts
+        // 找到公共前缀长度
+        let common_len = self_parts
             .iter()
-            .zip(other_parts.iter())
+            .zip(&other_parts)
             .take_while(|(a, b)| a == b)
             .count();
 
-        // 如果有公共前缀（至少有一段相同）
-        if common_prefix_len > 0 {
-            // 如果一个是另一个的前缀，短的排在前面
-            if common_prefix_len == self_parts.len() && self_parts.len() < other_parts.len() {
-                return Ordering::Less;
-            }
-            if common_prefix_len == other_parts.len() && other_parts.len() < self_parts.len() {
-                return Ordering::Greater;
-            }
+        if common_len == 0 {
+            // 无公共前缀，直接字典序比较
+            return self.0.cmp(&other.0);
+        }
 
-            // 如果有公共前缀但都不是对方的前缀，先按段数排序
-            match self_parts.len().cmp(&other_parts.len()) {
-                Ordering::Equal => {
-                    // 段数相同时，比较第一个不同的部分
-                    if common_prefix_len < self_parts.len().min(other_parts.len()) {
-                        self_parts[common_prefix_len].cmp(other_parts[common_prefix_len])
-                    } else {
-                        // 理论上不会到这里，但为了安全起见
-                        self.0.cmp(&other.0)
-                    }
-                }
-                other => other, // 段数少的排在前面
+        // 有公共前缀时，优先按段数排序
+        match self_parts.len().cmp(&other_parts.len()) {
+            Ordering::Equal => {
+                // 段数相同，比较第一个不同的段
+                self_parts
+                    .get(common_len)
+                    .cmp(&other_parts.get(common_len))
+                    .then_with(|| self.0.cmp(&other.0)) // 兜底比较
             }
-        } else {
-            // 没有公共前缀，直接按字典序比较
-            self.0.cmp(&other.0)
+            order => order, // 段数不同，段数少的在前
         }
     }
 }
@@ -241,7 +230,7 @@ fn get_val_string(val: &Value) -> Cow<str> {
             }
         }
         Value::Number(n) => Cow::Owned(n.to_string()),
-        Value::String(s) => Cow::Owned(s.clone()),
+        Value::String(s) => Cow::Borrowed(s),
         Value::Sequence(seq) => {
             let mut prefix = String::from("[");
             let arr: Vec<_> = seq.iter().map(|v| get_val_string(v)).collect();
